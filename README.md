@@ -6,7 +6,7 @@ When working, this code should automatically download, parse, and embed arxiv pa
 
 ## Installation
 ```
-git clone git@github.com:autonlab/arxiv_context_search.git
+git clone https://github.com/autonlab/dr-drafts-sota-literature-search.git
 cd arxiv_context_search/
 conda env create -f env.yml
 conda activate drdraft
