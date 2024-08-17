@@ -1,5 +1,5 @@
 """
-Module for the Proposal Test-O-Meter
+Module for the state of the art (SOTA) literature search
 """
 import textwrap
 import pandas as pd
@@ -30,20 +30,20 @@ TARGET = {'NSF': 'Synopsis',
           'EXTERNAL': 'Description',
           'ARXIV': 'abstract'
           }
-DRGRANT = 'all-mpnet-base-v2'
+DRDRAFT = 'all-mpnet-base-v2'
 DRGIST = 'facebook/bart-large-cnn'
 
 
 def results2console(results: pd.DataFrame, print_summary=False):
-    """Print the results of the Proposal Test-O-Meter to the console
+    """Print the results of the SOTA literature search to the console
 
     Args:
-        results (pd.DataFrame): The results of the Proposal Test-O-Meter
+        results (pd.DataFrame): The results of the SOTA literature search
         print_summary (bool, optional): Defaults to False.
     """
     show_testometer_banner()
     show_prizes()
-    print(f"""\n*** Dr. Grant\'s ({DRGRANT}) top {len(results)} picks***""")
+    print(f"""\n*** Dr. Draft\'s ({DRDRAFT}) top {len(results)} picks***""")
     for i in range(len(results)):
         x = results.iloc[i]
         show_prize_banner(f'{x.Title}', x.Similarity)
@@ -53,17 +53,17 @@ def results2console(results: pd.DataFrame, print_summary=False):
         
 
 def results2csv(results: pd.DataFrame, output_fn: str, prompt: str, qname: str):
-    """ Write the results of the Proposal Test-O-Meter to a CSV file
+    """ Write the results of the SOTA Literature Search to a CSV file
 
     Args:
-        results (pd.DataFrame): The results of the Proposal Test-O-Meter
+        results (pd.DataFrame): The results of the SOTA Literature Search
         output_fn (str): The filename for the output CSV
         prompt (str): The prompt that generated these results
         qname (str): The name of the query
     """
     show_testometer_banner()
     show_prizes()
-    print(f'\n*** Dr. Grant\'s ({DRGRANT}) top {len(results)} picks ***')
+    print(f'\n*** Dr. Draft\'s ({DRDRAFT}) top {len(results)} picks ***')
     for i in range(len(results)):
         x = results.iloc[i]
         show_prize_banner(f'{x.Title}', x.Similarity,
@@ -141,7 +141,7 @@ def description(ds, nearest_neighbors, i):
 
 
 def encode_prompt(prompt):
-    """Encode a prompt using the {DRGRANT} model
+    """Encode a prompt using the {DRDRAFT} model
 
     Args:
         prompt (str): The prompt to encode
@@ -149,11 +149,10 @@ def encode_prompt(prompt):
     Returns:
         Array: Vector representation of the prompt
     """
-    model = SentenceTransformer(DRGRANT)
+    model = SentenceTransformer(DRDRAFT)
     return model.encode([prompt])
 
-@lru_cache()
-def read_narrative_embeddings(filename: str, ttl_hash=None):
+def read_narrative_embeddings(filename: str):
     """ Read narrative embeddings from a file
 
     Args:
@@ -162,14 +161,7 @@ def read_narrative_embeddings(filename: str, ttl_hash=None):
     Returns:
         Pandas.DataFrame: The narrative embeddings
     """
-    del ttl_hash
     return pd.read_pickle(filename)
-
-def get_ttl_hash(seconds=600):
-    """https://stackoverflow.com/questions/31771286/python-in-memory-cache-with-time-to-live"""
-    """Return the same value withing `seconds` time period"""
-    return round(time.time() / seconds)
-
 
 def sort_by_similarity_to_prompt(prompt, embedded_narratives):
     """ Sort a set of narratives by similarity to a prompt
@@ -208,7 +200,7 @@ def human_readable_dollars(num: float):
 
 
 def show_prizes():
-    """Show a color-coded tier list for the Proposal Test-O-Meter
+    """Show a color-coded tier list for the SOTA Literature Search
 
     Args:
         None: Uses hard-coded values for prizes and colors
@@ -229,7 +221,7 @@ def show_prizes():
 
 
 def show_testometer_banner():
-    """Show a color banner for the Proposal Test-O-Meter
+    """Show a color banner for the SOTA Literature Search
 
     Args:
         None
@@ -239,17 +231,17 @@ def show_testometer_banner():
     """
     print()
     show_prize_banner(
-        "Dr. Grant's Proposal Test-O-Meter!",
+        "Dr. Draft's SOTA Literature Search!",
         0.99
     )
     show_one(
-        'How attractive is your idea to potential sponsors?',
+        'Has someone published something similar to your idea before?',
         "Let's find out!"
     )
 
 
 def show_prompt(prompt: str):
-    """Show the prompt supplied for the Proposal Test-O-Meter
+    """Show the prompt supplied for the SOTA Literature Search
 
     Args:
         prompt (str): The prompt supplied by the user
@@ -257,25 +249,21 @@ def show_prompt(prompt: str):
     Returns:
         None: Prints to console
     """
-    print(f'Prompt: {prompt}')
+    print(f'\033[38;5;84m\nPrompt:\033[0m {prompt}')
 
 
-def show_flags(k: int, prompt: str, since: bool, output: str, title: str):
-    """Show the flags supplied for the Proposal Test-O-Meter
+def show_flags(k: int, prompt: str, output: str, title: str):
+    """Show the flags supplied for the SOTA Literature Search
 
     Args:
         k (int): Number of matches to return
-        since (int): Restrict search to papers within the last s years
         output (str): CSV file to store output
         title (str): Title for results if multiple queries
     """
 
     print('\033[38;5;84m\nSPECIFICATION: \033[0m')
-    print(f"""Search for {k} most cosine-similar funding opportunity descriptions based on the
-          "{title}" prompt:""")
+    print(f"""Search for {k} most cosine-similar paper abstracts based on the "{title}" prompt:""")
     show_prompt(prompt)
-    if since>0:
-        print(f' - Restricting search to papers submitted within the last {since} years.')
     if output:
         print(f' - Results will be saved to {output}')
 
@@ -297,7 +285,6 @@ def show_data_stats(ds):
             feeds.append(feed)
     for feed in feeds:
         print(f'   -- {feed}: {len(ds[ds.filename.str.contains(feed)])} opportunities')
-    print(' - \033[38;5;202mData Sources Last Updated: 08/16/2024\033[0m')
 
 
 class Experiment():
@@ -309,20 +296,16 @@ class Experiment():
         self.embeddings = None
         self.nearest_neighbors = None
         self.k = k
-        self.since = -1
     def run(self):
         """ Run the experiment
         """
-        self.embeddings = read_narrative_embeddings(self.embeddingsFN,ttl_hash=get_ttl_hash())
+        self.embeddings = read_narrative_embeddings(self.embeddingsFN)
         show_data_stats(self.embeddings)
         self.nearest_neighbors = sort_by_similarity_to_prompt(self.prompt, self.embeddings)
 
-    def select_results(self, neighbors, since=-1):
+    def select_results(self, neighbors):
         df = pd.DataFrame([self.read_neighbor(i) for i in neighbors])
         df['CloseDate'] = pd.to_datetime(df['CloseDate'])
-        if since>0:
-            df.dropna(subset=['CloseDate'],inplace=True)
-            df = df[~(df['CloseDate'] < (datetime.now()-relativedelta(years=since)))]
         return df
 
     def read_neighbor(self, i):

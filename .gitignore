@@ -1,2 +1,4 @@
 index/
 raw/
+sample_output.csv
+__pycache__/
