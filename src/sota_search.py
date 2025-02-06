@@ -1,19 +1,15 @@
 """
 Module for the state of the art (SOTA) literature search
 """
-import textwrap
-import pandas as pd
-import time
 from os.path import exists
 from os import environ
-from datetime import datetime
-from dateutil.relativedelta import relativedelta
+import textwrap
+import pandas as pd
+import numpy as np
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
-from transformers import pipeline
-from src import data as DATA
-from functools import lru_cache
-
+from ansi2html import Ansi2HTMLConverter
+from flask import request
 
 environ["TOKENIZERS_PARALLELISM"] = "false"  # parallel GPU throws warning
 N_TIERS = 11
@@ -34,7 +30,20 @@ DRDRAFT = 'all-mpnet-base-v2'
 DRGIST = 'facebook/bart-large-cnn'
 
 
-def results2console(results: pd.DataFrame, print_summary=False):
+def is_running_in_flask():
+    """Check if the code is running in a Flask context"""
+    return request and request.url_rule is not None
+
+
+def platform_specific_text(text: str):
+    """Convert ANSI to HTML if running in Flask, otherwise return ANSI text"""
+    if is_running_in_flask():
+        return Ansi2HTMLConverter().convert(text)
+    else:
+        return text
+
+
+def results2console(results: pd.DataFrame):
     """Print the results of the SOTA literature search to the console
 
     Args:
@@ -43,16 +52,19 @@ def results2console(results: pd.DataFrame, print_summary=False):
     """
     show_testometer_banner()
     show_prizes()
-    print(f"""\n*** Dr. Draft\'s ({DRDRAFT}) top {len(results)} picks***""")
+    print(platform_specific_text(
+        f"""\n*** Dr. Draft\'s ({DRDRAFT}) top {len(results)} picks***""")
+    )
     for i in range(len(results)):
         x = results.iloc[i]
         show_prize_banner(f'{x.Title}', x.Similarity)
         show_one('URL', x['URL'])
-        description = x['Description']
-        show_one('Abstract', description, limit=True)
-        
+        abstract_desc = x['Description']
+        show_one('Abstract', abstract_desc, limit=True)
 
-def results2csv(results: pd.DataFrame, output_fn: str, prompt: str, qname: str):
+
+def results2csv(results: pd.DataFrame, output_fn: str,
+                prompt: str, qname: str):
     """ Write the results of the SOTA Literature Search to a CSV file
 
     Args:
@@ -63,7 +75,9 @@ def results2csv(results: pd.DataFrame, output_fn: str, prompt: str, qname: str):
     """
     show_testometer_banner()
     show_prizes()
-    print(f'\n*** Dr. Draft\'s ({DRDRAFT}) top {len(results)} picks ***')
+    print(platform_specific_text(
+        f'\n*** Dr. Draft\'s ({DRDRAFT}) top {len(results)} picks ***')
+    )
     for i in range(len(results)):
         x = results.iloc[i]
         show_prize_banner(f'{x.Title}', x.Similarity,
@@ -78,7 +92,8 @@ def results2csv(results: pd.DataFrame, output_fn: str, prompt: str, qname: str):
                    header=not exists(output_fn))
 
 
-def show_prize_banner(message: str, prize: float, show_score=False, limit=True):
+def show_prize_banner(message: str, prize: float, show_score=False,
+                      limit=True):
     """ Print a color-coded prize banner to the console
 
     Args:
@@ -96,9 +111,13 @@ def show_prize_banner(message: str, prize: float, show_score=False, limit=True):
         text = '\n'.join(
             textwrap.wrap(text, PRINTMAXCHARS, break_long_words=True))
     if show_score:
-        print(f'\033[1;38;5;{color}m{header} {text[len(header)-1:]}\033[0m')
+        print(platform_specific_text(
+            f'\033[1;38;5;{color}m{header} {text[len(header)-1:]}\033[0m')
+        )
     else:
-        print(f'\033[1;38;5;{color}m{text[len(header):]}\033[0m')
+        print(platform_specific_text(
+            f'\033[1;38;5;{color}m{text[len(header):]}\033[0m')
+        )
 
 
 def show_one(key1: str, val1: str, limit=False):
@@ -121,23 +140,10 @@ def show_one(key1: str, val1: str, limit=False):
         text = '\n'.join(textwrap.wrap(text,
                                        PRINTMAXCHARS,
                                        break_long_words=True))
-    print(f'\033[1m{key1}:\033[0m\033[38;5;8m{text[len(header)-1:]}\033[0m')
 
-
-def description(ds, nearest_neighbors, i):
-    """ Print a description from the dataset
-
-    Args:
-        ds (Pandas.DataFrame): The dataset
-        nearest_neighbors (List): Sorted list of nearest neighbors
-        i (int): The neighbor to print
-    """
-    fn = ds.loc[nearest_neighbors.index[i]].filename
-    row = ds.loc[nearest_neighbors.index[i]].row
-    source = fn.split('/')[-1].split('_')[0]
-    funcname = eval(source)
-    raw_data = funcname(fn, TARGET[source])
-    show_one(i, raw_data.df.loc[row].Description)
+    print(platform_specific_text(
+        f'\033[1m{key1}:\033[0m\033[38;5;8m{text[len(header)-1:]}\033[0m')
+    )
 
 
 def encode_prompt(prompt):
@@ -152,6 +158,7 @@ def encode_prompt(prompt):
     model = SentenceTransformer(DRDRAFT)
     return model.encode([prompt])
 
+
 def read_narrative_embeddings(filename: str):
     """ Read narrative embeddings from a file
 
@@ -162,6 +169,7 @@ def read_narrative_embeddings(filename: str):
         Pandas.DataFrame: The narrative embeddings
     """
     return pd.read_pickle(filename)
+
 
 def sort_by_similarity_to_prompt(prompt, embedded_narratives):
     """ Sort a set of narratives by similarity to a prompt
@@ -174,6 +182,7 @@ def sort_by_similarity_to_prompt(prompt, embedded_narratives):
         Pandas.DataFrame: The sorted narratives
     """
     embedded_prompt = encode_prompt(prompt)
+
     similarity = [_[0] for _ in
                   cosine_similarity(embedded_narratives.iloc[:, 4:],
                                     embedded_prompt.reshape(1, -1))]
@@ -181,6 +190,25 @@ def sort_by_similarity_to_prompt(prompt, embedded_narratives):
                           index=embedded_narratives.index)
     result.sort_values('similarity', inplace=True, ascending=False)
     return result
+
+
+def compute_similarity(embedded_prompt: np.array,
+                       embedded_narratives: np.array):
+    """ Compute the similarity between a prompt and a set of narratives """
+    similarity = [_[0] for _ in cosine_similarity(
+            embedded_narratives.iloc[:, 4:],
+            embedded_prompt.reshape(1, -1)
+        )
+    ]
+    return pd.DataFrame(
+        {'similarity': similarity},
+        index=embedded_narratives.index
+    )
+
+
+def sort_similarity_descending(similarity: pd.DataFrame):
+    """ Sort the similarity in descending order """
+    return similarity.sort_values('similarity', inplace=False, ascending=False)
 
 
 def human_readable_dollars(num: float):
@@ -217,7 +245,9 @@ def show_prizes():
         hi_lim = (pidx+1)/len(prizes)
         pname = prizes[pidx]
         metric = f'Cosine Similarity in [{low_lim:.1f},{hi_lim:.1f})'
-        print(f' - \033[38;5;{color}m{metric}\033[0m -- {pname}')
+        print(platform_specific_text(
+            f' - \033[38;5;{color}m{metric}\033[0m -- {pname}')
+        )
 
 
 def show_testometer_banner():
@@ -229,7 +259,7 @@ def show_testometer_banner():
     Returns:
         None: Prints to console
     """
-    print()
+    print(platform_specific_text(''))
     show_prize_banner(
         "Dr. Draft's SOTA Literature Search!",
         0.99
@@ -249,7 +279,7 @@ def show_prompt(prompt: str):
     Returns:
         None: Prints to console
     """
-    print(f'\033[38;5;84m\nPrompt:\033[0m {prompt}')
+    print(platform_specific_text(f'\033[38;5;84m\nPrompt:\033[0m {prompt}'))
 
 
 def show_flags(k: int, prompt: str, output: str, title: str):
@@ -261,11 +291,13 @@ def show_flags(k: int, prompt: str, output: str, title: str):
         title (str): Title for results if multiple queries
     """
 
-    print('\033[38;5;84m\nSPECIFICATION: \033[0m')
-    print(f"""Search for {k} most cosine-similar paper abstracts based on the "{title}" prompt:""")
+    print(platform_specific_text("\033[38;5;84m\nSPECIFICATION: \033[0m"))
+    print(platform_specific_text(
+        f'Search for {k} most cosine-similar abstracts to \"{title}\" prompt:')
+    )
     show_prompt(prompt)
     if output:
-        print(f' - Results will be saved to {output}')
+        print(platform_specific_text(f' - Results will be saved to {output}'))
 
 
 def show_data_stats(ds):
@@ -277,37 +309,13 @@ def show_data_stats(ds):
     Returns:
         None: Prints to console
     """
-    print(f' - Searching {len(ds)} opportunities:')
+    print(platform_specific_text(f' - Searching {len(ds)} opportunities:'))
     feeds = []
     for source in ds.filename.unique():
-        feed = source.split('_')[0].split('/')[-1]
-        if feed not in feeds:
-            feeds.append(feed)
-    for feed in feeds:
-        print(f'   -- {feed}: {len(ds[ds.filename.str.contains(feed)])} opportunities')
-
-
-class Experiment():
-    """ Class for running
-    """
-    def __init__(self, prompt: str, embeddingsFN: str, k: int):
-        self.prompt = prompt
-        self.embeddingsFN = embeddingsFN
-        self.embeddings = None
-        self.nearest_neighbors = None
-        self.k = k
-    def run(self):
-        """ Run the experiment
-        """
-        self.embeddings = read_narrative_embeddings(self.embeddingsFN)
-        show_data_stats(self.embeddings)
-        self.nearest_neighbors = sort_by_similarity_to_prompt(self.prompt, self.embeddings)
-
-    def select_results(self, neighbors):
-        df = pd.DataFrame([self.read_neighbor(i) for i in neighbors])
-        df['CloseDate'] = pd.to_datetime(df['CloseDate'])
-        return df
-
-    def read_neighbor(self, i):
-        x=self.embeddings.loc[self.nearest_neighbors.index[i]]
-        return getattr(DATA,x.source)(x.filename,TARGET[x.source]).to_dict(x.row,self.nearest_neighbors.iloc[i].similarity)
+        f = source.split('_')[0].split('/')[-1]
+        if f not in feeds:
+            feeds.append(f)
+    for f in feeds:
+        print(platform_specific_text(
+            f'   -- {f}: {len(ds[ds.filename.str.contains(f)])} opportunities')
+        )

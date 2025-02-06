@@ -12,8 +12,10 @@ if [ ! -d ${RDIR} ]; then
 fi
 
 for FILE in ${SDIR}/get_*; do
-	echo ${FILE}
-	${FILE} ${IDIR} ${RDIR} ${SDIR} ${MAXLINES}
+	if [ ! -f ${FILE} ]; then
+		echo ${FILE}
+		${FILE} ${IDIR} ${RDIR} ${SDIR} ${MAXLINES}
+	fi
 done
 
 echo 'Building index for Dr. Grants Proposal Test-O-Meter'

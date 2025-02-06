@@ -21,7 +21,7 @@ DESCRIPTION_ATTR = {
                     }
 
 
-def encode_narratives(N: List[str]) -> pandas.DataFrame:
+def encode_narratives(narratives: List[str]) -> pandas.DataFrame:
     """Encode narratives using SentenceTransformer. Multi-GPU support.
 
     Model is set to all-mpnet-base-v2.
@@ -37,14 +37,14 @@ def encode_narratives(N: List[str]) -> pandas.DataFrame:
     if torch.cuda.device_count() > 1:
         tds = ['cuda:1', 'cuda:2', 'cuda:0', 'cuda:3']
         pool = transformer.start_multi_process_pool(target_devices=tds)
-        embs = transformer.encode_multi_process(N,
+        embs = transformer.encode_multi_process(narratives,
                                                 pool,
-                                                batch_size=1024,  # 128
-                                                chunk_size=len(N)/1000  # 100
+                                                batch_size=1024,
+                                                chunk_size=len(narratives)/1000
                                                 )
         transformer.stop_multi_process_pool(pool)
     else:
-        embs = transformer.encode(N,
+        embs = transformer.encode(narratives,
                                   show_progress_bar=True,
                                   batch_size=64,
                                   device=device
@@ -66,13 +66,11 @@ def glob2objects(glob_pattern: str):
     files = list(glob(glob_pattern))
     classes = [f.split('/')[-1].split('_')[0] for f in files]
     zset = zip(files, classes)
-    print('zset',zset)
     objs = [getattr(DATA_CLASSES, c)(f, DESCRIPTION_ATTR[c]) for f, c in zset]
-    print('obj',objs)
     return objs
 
 
-def objects2descriptions(Objs: list):
+def objects2descriptions(ojbs: List[object]):
     """Convert objects to descriptions.
 
     Args:
@@ -81,7 +79,7 @@ def objects2descriptions(Objs: list):
     Returns:
         pandas.DataFrame: DataFrame with descriptions read from objects
     """
-    return pandas.concat([obj.get_descriptions() for obj in Objs],
+    return pandas.concat([obj.get_descriptions() for obj in ojbs],
                          ignore_index=True)
 
 
@@ -94,7 +92,6 @@ if __name__ == "__main__":
         keep='last',
         ignore_index=True
         )
-    #df = descriptions
     if not torch.cuda.is_available():
         print('Warning: No GPU detected. Using CPU.')
     embeddings = encode_narratives(df.description.astype(str))
